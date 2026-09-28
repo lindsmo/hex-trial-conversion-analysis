@@ -1,0 +1,939 @@
+schemaVersion: 3
+meta:
+  sourceVersionId: 01a0e8a2-c6b2-706f-b574-e3bd2f77ddf2 # DO NOT CHANGE - Hex uses this to match up project versions when reimporting the file
+  description: Which self-service trial engagement signals predict conversion to paid? A full-stack SQL + Python analysis built with AI-assisted workflows in Hex.
+  projectId: 01a0d4c5-3039-71f5-82ae-7437d59555fe # DO NOT CHANGE - Unique ID of the project from which this file was generated
+  title: Trial Conversion Signals
+  timezone: null
+  appTheme: SYS_PREF
+  codeLanguage: PYTHON
+  status: null
+  categories: []
+  castDecimalsDefault: true
+  hexType: PROJECT
+  allowExecutionReordering: true
+  prerunApp: false
+  autoRerunApp: true
+  cachePublishedAppState: true
+  logicQueryCacheTimeout: null
+  publishedQueryCacheTimeout: null
+  refreshStalePublishedApp: true
+  kernelImage: python312
+  kernelSize: medium
+projectAssets:
+  dataConnections: []
+  envVars: []
+  secrets: []
+sharedAssets:
+  secrets: []
+  vcsPackages: []
+  dataConnections: []
+  externalFileIntegrations: []
+cells:
+  - cellType: MARKDOWN
+    cellId: 01a0d6e2-c349-71a6-a8a7-8fd11abebeb7 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Project scope
+    config:
+      source: |-
+        # 1. Project Scope
+
+        * **Question:** Which self-service trial engagement signals predict a conversion to a paid subscription?
+        * **Objective:** Deliver insights on synthetic trial conversion data that empower the customer team to drive product adoption.
+  - cellType: MARKDOWN
+    cellId: 01a0da16-086d-779b-ab9a-fe6272008629 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Generating the synthetic dataset
+    config:
+      source: |-
+        # 2. Generating the Synthetic Dataset
+
+        Generation of a synthetic dataset, necessary to walk through a trial conversion analysis
+  - cellType: CODE
+    cellId: 01a0d6e7-32c4-7423-8814-e0fd6859876d # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Synthetic trial engagement data generation
+    config:
+      source: |-
+        import numpy as np
+        import pandas as pd
+
+        rng = np.random.default_rng(42)
+        n = 2000
+
+        signup_channel = rng.choice(
+            ["organic_search", "paid_search", "referral", "content", "partner"],
+            size=n, p=[0.35, 0.25, 0.15, 0.15, 0.10]
+        )
+        seats_invited = rng.poisson(2, n)
+        datasets_connected = rng.poisson(1.2, n)
+        queries_run_wk1 = rng.negative_binomial(2, 0.08, n)
+        support_tickets = rng.poisson(0.6, n)
+        days_active = np.clip(
+            rng.binomial(14, 0.25, n) + (queries_run_wk1 > 20) * rng.integers(0, 5, n) + datasets_connected,
+            1, 14
+        )
+
+        channel_effect = pd.Series(signup_channel).map(
+            {"organic_search": 0.0, "paid_search": -0.3, "referral": 0.6, "content": 0.1, "partner": 0.4}
+        ).to_numpy()
+
+        logit = (
+            -3.2
+            + 0.35 * np.minimum(seats_invited, 6)
+            + 0.55 * np.minimum(datasets_connected, 4)
+            + 0.015 * np.minimum(queries_run_wk1, 80)
+            + 0.12 * days_active
+            + 0.15 * np.minimum(support_tickets, 2) - 0.35 * np.maximum(support_tickets - 2, 0)
+            + channel_effect
+            + rng.normal(0, 0.5, n)
+        )
+        converted = rng.binomial(1, 1 / (1 + np.exp(-logit)))
+
+        trials_df = pd.DataFrame({
+            "account_id": [f"ACC-{i:05d}" for i in range(1, n + 1)],
+            "signup_channel": signup_channel,
+            "seats_invited": seats_invited,
+            "datasets_connected": datasets_connected,
+            "queries_run_wk1": queries_run_wk1,
+            "support_tickets": support_tickets,
+            "days_active": days_active,
+            "converted": converted,
+        })
+        trials_df
+  - cellType: MARKDOWN
+    cellId: 01a0da26-4567-72aa-89b9-bb89d2adf8aa # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Describing the dataset
+    config:
+      source: |-
+        # 3. Describing the Dataset
+        Dataset profile for each signal to get a sense of the distribution of the data
+  - cellType: CODE
+    cellId: 01a0d7f2-4bb4-7094-8956-dc86e03a4dea # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Dataset Profile
+    config:
+      source: |-
+        numeric_cols = [
+            "seats_invited",
+            "datasets_connected",
+            "queries_run_wk1",
+            "support_tickets",
+            "days_active"
+        ]
+
+        # Describe the dataset for each signal to get a sense of the distribution of the data
+        trials_df[numeric_cols].describe()
+  - cellType: MARKDOWN
+    cellId: 01a0da18-6b5f-7384-9d02-37e665bac0f3 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: null
+    config:
+      source: |-
+        # 4. Evaluating Conversion and Ranking Signals
+        * Calculation of the overall conversion rate across the synthetic dataset
+        * Calculation of correlation to use as a baseline (doesn't yet adjust for confounding signals)
+        * Calculation of a standardized logistic regression to evaluate the impact of each signal in isolation (holding other signals that might correlate with it constant)
+  - cellType: CODE
+    cellId: 01a0d7c3-fb53-77ef-9f6e-2b57085a3541 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Overall Conversion Rate
+    config:
+      source: |-
+        overall_conversion_rate = trials_df['converted'].mean()
+        overall_conversion_rate
+  - cellType: CODE
+    cellId: 01a0d753-bd03-772e-afd2-051720718bac # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Correlation baseline
+    config:
+      source: trials_df[numeric_cols].corrwith(trials_df["converted"])
+  - cellType: CODE
+    cellId: 01a0d761-a40c-778a-bbaf-b660540b80b7 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Standardized logistic regression
+    config:
+      source: |
+        # Install and import statsmodels module
+        !uv pip install statsmodels==0.15.0 -q
+        import statsmodels.formula.api as smf
+
+        # Copy trials_df as z_df and standardize signals
+        z_df = trials_df.copy()
+
+        z_df[numeric_cols] = (trials_df[numeric_cols] - trials_df[numeric_cols].mean()) / trials_df[numeric_cols].std()
+
+        # Fit the model
+        model = smf.logit(
+            "converted ~ seats_invited + datasets_connected + queries_run_wk1 + support_tickets + days_active + C(signup_channel, Treatment('organic_search'))", 
+            data=z_df
+        ).fit()
+
+        # Extract coefficients and 95% confidence intervals into a DataFrame
+        summary_df = pd.DataFrame({
+            "coef": model.params,
+            "conf_lower": model.conf_int().iloc[:, 0],
+            "conf_upper": model.conf_int().iloc[:, 1],
+        })
+
+        # Filter to numeric columns only (excluding Intercept and categorical channels)
+        signals_df = summary_df.loc[numeric_cols].copy()
+
+        # Add the odds ratio, percentage change in odds, and confidence interval ratio
+        signals_df["odds_ratio"] = np.exp(model.params)
+        signals_df["odds_ratio_pct_change"] = (signals_df["odds_ratio"] - 1) * 100
+        signals_df["conf_lower_ratio"] = np.exp(signals_df["conf_lower"])
+        signals_df["conf_upper_ratio"] = np.exp(signals_df["conf_upper"])
+
+        # Add the absolute value of each coefficient for sorting purposes
+        signals_df["abs_coef"] = signals_df["coef"].abs()
+
+        # Sort by absolute magnitude descending
+        ranked_signals = signals_df.sort_values("abs_coef", ascending=False)
+        ranked_signals
+  - cellType: CODE
+    cellId: 01a0da34-30f0-71bd-a416-afbde7093e32 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Full model summary (for p-value; omit from published app)
+    config:
+      source: print(model.summary())
+  - cellType: MARKDOWN
+    cellId: 01a0d9ed-9f5f-720a-b08d-8bb03f3782e1 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Bucketing Top Signal Method Testing
+    config:
+      source: |-
+        # 5. Digging Deeper into Top Signal Data
+
+        * Initial bucketing of top signal by quantiles (however, the data is heavily skewed toward 0 datasets connected during trials)
+        * Final bucketing of top signal by explicit bins to get meaningful insight
+  - cellType: CODE
+    cellId: 01a0d7c6-6e58-719c-9fe2-ad89ca95b7fe # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: "Bucketing Top Signal: Quantiles (Rejected: Skewed toward 0)"
+    config:
+      source: |-
+        #Define buckets for top signal using quantiles
+        tiered_qcut_df = trials_df.copy()
+        tiered_qcut_df['engagement_tier'] = pd.qcut(tiered_qcut_df['datasets_connected'], q=3, labels =["1-low", "2-mid", "3-high"])
+  - cellType: EXPLORE
+    cellId: 01a0d7ca-f5b8-7686-8866-022905c9bc07 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: "Accounts Per Tier: Quantile Bins (Rejected: Skewed Toward 0)"
+    config:
+      semanticProjectId: null
+      dataframe: tiered_qcut_df
+      colorMappings: {}
+      spec:
+        fields:
+          - id: 01a0d80b-b786-71f8-b636-37f82e299f9c
+            value: account_id
+            channel: cross-axis
+            dataType: VARCHAR
+            seriesId: 01a0d7ca-f5b6-7592-99b0-68c5d21e86c2
+            fieldType: COLUMN
+            queryPath: []
+            aggregation: CountDistinct
+          - id: 01a0d80b-88c6-76a5-9121-82ca9191fce0
+            value: engagement_tier
+            channel: base-axis
+            dataType: VARCHAR
+            seriesId: 01a0d7ca-f5b6-7592-99b0-68c5d21e86c2
+            fieldType: COLUMN
+            queryPath: []
+        details:
+          fields:
+            - value: account_id
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: signup_channel
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: seats_invited
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: datasets_connected
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: queries_run_wk1
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: support_tickets
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: days_active
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: converted
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: engagement_tier
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+          enabled: false
+          showAllBaseTableDetailFields: false
+        viewType: visualization
+        rowTotals: true
+        chartConfig:
+          series:
+            - id: 01a0d7ca-f5b6-7592-99b0-68c5d21e86c2
+              type: bar
+              barGrouped: true
+          settings:
+            legend:
+              position: right
+          orientation: vertical
+          seriesGroups:
+            - - 01a0d7ca-f5b6-7592-99b0-68c5d21e86c2
+        columnTotals: true
+        visualizationType: chart
+      displayTableConfig:
+        pageSize: 50
+        height: null
+        hideIcons: false
+        defaultColumnWidth: null
+        hideIndex: false
+        defaultSortColumn: null
+        defaultSortIndexColumn: null
+        defaultSortDirection: ASC
+        conditionalFormatting: null
+        calcs: null
+        filters: null
+        columnProperties: []
+        columnOrdering: null
+        customColumnOrdering: null
+        pinnedColumns: null
+        hiddenColumns: null
+        pinIndexColumns: false
+        showAggregations: false
+        columnAggregations: null
+      resultVariables: []
+      resultIncludeDetailColumns: false
+      height: null
+  - cellType: CODE
+    cellId: 01a0d7f8-3042-77fe-9387-c874cd9c7f5f # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: "Bucketing Top Signal: Explicit Bins"
+    config:
+      source: |-
+        #Define buckets for top signal using explicit bins since data is skewed toward 0; tested defining 3 bins initially, but found 4 bins showed the distribution better since there are also quite a few accounts with 0 datasets connected.
+        tiered_explicit_df = trials_df.copy()
+        tiered_explicit_df['engagement_tier'] = pd.cut(tiered_explicit_df['datasets_connected'], bins = [-1, 0, 1, 2, np.inf], labels =["0", "1", "2", "3+"])
+  - cellType: EXPLORE
+    cellId: 01a0d805-5477-73af-815f-a3735c959474 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: "Accounts Per Tier: Explicit Bins"
+    config:
+      semanticProjectId: null
+      dataframe: tiered_explicit_df
+      colorMappings: {}
+      spec:
+        fields:
+          - id: 01a0d80c-0434-76b1-89b2-a88cf972439a
+            value: account_id
+            channel: cross-axis
+            dataType: VARCHAR
+            seriesId: 01a0d805-5475-7102-9a1e-871d311c31e6
+            fieldType: COLUMN
+            queryPath: []
+            aggregation: CountDistinct
+          - id: 01a0d80b-f6e6-7078-b721-c9ad21ff55d5
+            value: engagement_tier
+            channel: base-axis
+            dataType: VARCHAR
+            seriesId: 01a0d805-5475-7102-9a1e-871d311c31e6
+            fieldType: COLUMN
+            queryPath: []
+        details:
+          fields:
+            - value: account_id
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: signup_channel
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: seats_invited
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: datasets_connected
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: queries_run_wk1
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: support_tickets
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: days_active
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: converted
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: engagement_tier
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+          enabled: false
+          showAllBaseTableDetailFields: true
+        viewType: visualization
+        rowTotals: true
+        chartConfig:
+          series:
+            - id: 01a0d805-5475-7102-9a1e-871d311c31e6
+              type: bar
+              barGrouped: true
+          settings:
+            legend:
+              position: right
+          orientation: vertical
+          seriesGroups:
+            - - 01a0d805-5475-7102-9a1e-871d311c31e6
+        columnTotals: true
+        visualizationType: chart
+      displayTableConfig:
+        pageSize: 50
+        height: null
+        hideIcons: false
+        defaultColumnWidth: null
+        hideIndex: false
+        defaultSortColumn: null
+        defaultSortIndexColumn: null
+        defaultSortDirection: ASC
+        conditionalFormatting: null
+        calcs: null
+        filters: null
+        columnProperties: []
+        columnOrdering: null
+        customColumnOrdering: null
+        pinnedColumns: null
+        hiddenColumns: null
+        pinIndexColumns: false
+        showAggregations: false
+        columnAggregations: null
+      resultVariables: []
+      resultIncludeDetailColumns: false
+      height: null
+  - cellType: MARKDOWN
+    cellId: 01a0da21-2aee-7457-8570-e92c4f9caff5 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Aggregating Top-Ranked Signal by Signup Channel and Conversion Rate
+    config:
+      source: |-
+        # 6. Aggregating Top-Ranked Signal by Signup Channel and Conversion Rate
+        * Calculation of conversion rate and count of accounts by signup channel and top-ranked signal bins
+        * Visualization of distribution of top-ranked signal bins by conversion rate and signup channel
+        * Visualization of distribution of signup channels by conversion rate and top-ranked signal bins
+  - cellType: SQL
+    cellId: 01a0d7f0-6d6a-72ea-9a13-36bd2690704d # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Aggregation by Channel and Count of Datasets Connected
+    config:
+      source: |-
+        SELECT 
+            signup_channel, 
+            engagement_tier, 
+            AVG(converted) AS conversion_rate, 
+            COUNT(*) AS n_accounts 
+        FROM tiered_explicit_df
+        GROUP BY signup_channel, engagement_tier
+        ORDER BY signup_channel, engagement_tier
+      dataFrameCell: true
+      dataConnectionId: null
+      resultVariableName: conversion_by_channel_tier
+      useRichDisplay: true
+      enablePreview: true
+      sqlCellOutputType: PANDAS
+      useQueryMode: false
+      castDecimals: true
+      useNativeDates: true
+      outputFilteredResult: true
+      allowDuplicateColumns: false
+      tableDisplayConfig:
+        pageSize: 50
+        height: null
+        hideIcons: false
+        defaultColumnWidth: null
+        hideIndex: false
+        defaultSortColumn: null
+        defaultSortIndexColumn: null
+        defaultSortDirection: ASC
+        conditionalFormatting: null
+        calcs: null
+        filters: null
+        columnProperties:
+          - originalName: conversion_rate
+            renameTo: null
+            size: 165
+            wrapText: null
+            displayFormat: null
+          - originalName: engagement_tier
+            renameTo: null
+            size: 144
+            wrapText: null
+            displayFormat: null
+          - originalName: n_accounts
+            renameTo: null
+            size: 114
+            wrapText: null
+            displayFormat: null
+          - originalName: row-index-0
+            renameTo: null
+            size: 28
+            wrapText: null
+            displayFormat: null
+          - originalName: signup_channel
+            renameTo: null
+            size: 137
+            wrapText: null
+            displayFormat: null
+        columnOrdering: null
+        customColumnOrdering: null
+        pinnedColumns: null
+        hiddenColumns: null
+        pinIndexColumns: false
+        showAggregations: false
+        columnAggregations: null
+  - cellType: EXPLORE
+    cellId: 01a0d81d-76c3-7144-b8f6-694f3cf1096a # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Conversion Rate by Engagement Tier
+    config:
+      semanticProjectId: null
+      dataframe: conversion_by_channel_tier
+      colorMappings:
+        content: "#4C78A8"
+        partner: "#72B7B2"
+        referral: "#54A24B"
+        paid_search: "#E45756"
+        organic_search: "#F58518"
+      spec:
+        fields:
+          - id: 01a0d81d-fbe1-7587-974f-2b1ac066c4ca
+            value: engagement_tier
+            channel: base-axis
+            dataType: VARCHAR
+            seriesId: 01a0d81d-76c2-77f8-811e-b17ce18632fe
+            fieldType: COLUMN
+            queryPath: []
+          - id: 01a0d81e-9a13-72ed-8495-855e372d42cb
+            value: conversion_rate
+            channel: cross-axis
+            dataType: FLOAT
+            seriesId: 01a0d81d-76c2-77f8-811e-b17ce18632fe
+            fieldType: COLUMN
+            queryPath: []
+            aggregation: Avg
+          - id: 01a0d851-f44e-7112-b7c7-21ab74396577
+            value: signup_channel
+            channel: color
+            dataType: VARCHAR
+            seriesId: 01a0d81d-76c2-77f8-811e-b17ce18632fe
+            fieldType: COLUMN
+            queryPath: []
+        details:
+          fields:
+            - value: signup_channel
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: engagement_tier
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: conversion_rate
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: n_accounts
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+          enabled: false
+          showAllBaseTableDetailFields: true
+        viewType: visualization
+        rowTotals: true
+        chartConfig:
+          series:
+            - id: 01a0d81d-76c2-77f8-811e-b17ce18632fe
+              type: bar
+              barGrouped: true
+          settings:
+            legend:
+              position: right
+          orientation: vertical
+          seriesGroups:
+            - - 01a0d81d-76c2-77f8-811e-b17ce18632fe
+        columnTotals: true
+        visualizationType: chart
+      displayTableConfig:
+        pageSize: 50
+        height: null
+        hideIcons: false
+        defaultColumnWidth: null
+        hideIndex: false
+        defaultSortColumn: null
+        defaultSortIndexColumn: null
+        defaultSortDirection: ASC
+        conditionalFormatting: null
+        calcs: null
+        filters: null
+        columnProperties: []
+        columnOrdering: null
+        customColumnOrdering: null
+        pinnedColumns: null
+        hiddenColumns: null
+        pinIndexColumns: false
+        showAggregations: false
+        columnAggregations: null
+      resultVariables: []
+      resultIncludeDetailColumns: false
+      height: null
+  - cellType: EXPLORE
+    cellId: 01a0d81e-dcc4-7097-b60e-689b39b6c0ca # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Conversion Rate by Channel
+    config:
+      semanticProjectId: null
+      dataframe: conversion_by_channel_tier
+      colorMappings:
+        "0": "#4C78A8"
+        "1": "#F58518"
+        "2": "#E45756"
+        3+: "#72B7B2"
+      spec:
+        fields:
+          - id: 01a0d81f-1f3a-778b-aa93-ecc502e901f4
+            value: signup_channel
+            channel: base-axis
+            dataType: VARCHAR
+            seriesId: 01a0d81e-dcc4-7097-b60e-5b04fa714045
+            fieldType: COLUMN
+            queryPath: []
+          - id: 01a0d81f-26ec-7708-92f1-a4509e281137
+            value: conversion_rate
+            channel: cross-axis
+            dataType: FLOAT
+            seriesId: 01a0d81e-dcc4-7097-b60e-5b04fa714045
+            fieldType: COLUMN
+            queryPath: []
+            aggregation: Avg
+          - id: 01a0d852-7a5d-756d-8faa-6df0e56bf969
+            value: engagement_tier
+            channel: color
+            dataType: VARCHAR
+            seriesId: 01a0d81e-dcc4-7097-b60e-5b04fa714045
+            fieldType: COLUMN
+            queryPath: []
+        details:
+          fields:
+            - value: signup_channel
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: engagement_tier
+              dataType: VARCHAR
+              fieldType: COLUMN
+              queryPath: []
+            - value: conversion_rate
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+            - value: n_accounts
+              dataType: FLOAT
+              fieldType: COLUMN
+              queryPath: []
+          enabled: false
+          showAllBaseTableDetailFields: true
+        viewType: visualization
+        rowTotals: true
+        chartConfig:
+          series:
+            - id: 01a0d81e-dcc4-7097-b60e-5b04fa714045
+              type: bar
+              barGrouped: true
+          settings:
+            legend:
+              position: right
+          orientation: vertical
+          seriesGroups:
+            - - 01a0d81e-dcc4-7097-b60e-5b04fa714045
+        columnTotals: true
+        visualizationType: chart
+      displayTableConfig:
+        pageSize: 50
+        height: null
+        hideIcons: false
+        defaultColumnWidth: null
+        hideIndex: false
+        defaultSortColumn: null
+        defaultSortIndexColumn: null
+        defaultSortDirection: ASC
+        conditionalFormatting: null
+        calcs: null
+        filters: null
+        columnProperties: []
+        columnOrdering: null
+        customColumnOrdering: null
+        pinnedColumns: null
+        hiddenColumns: null
+        pinIndexColumns: false
+        showAggregations: false
+        columnAggregations: null
+      resultVariables: []
+      resultIncludeDetailColumns: false
+      height: null
+  - cellType: MARKDOWN
+    cellId: 01a0d81f-c129-772f-b931-dd5d67ba9399 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Analysis Summary
+    config:
+      source: |-
+        # 7. Analysis Summary
+        ## Signal Ranking
+        After ranking 5 signals in a synthetic trial conversion dataset by their standardized logistic regression coefficients, controlling for the other signals, the order of the signals' association with conversion is, from greatest to least:
+        1. Number of datasets that the customer connected to during the trial,
+        2. Number of seats added to the trial account,
+        3. Number of days that the customer interacted with the product during the trial,
+        4. Number of queries that the customer ran during the first week of the trial, and
+        5. Number of support tickets that the customer filed during the trial.
+
+        **A Note on Support Ticket Volume:** It's worth noting that while support ticket volume appears to have a fairly neutral effect on conversion (p-value of 0.26, far above the threshold for statistical significance), this is likely masking to some degree a correlation between distinct volumes of support tickets filed and conversion:
+        * A non-zero but small number of tickets likely indicates customer engagement and would be expected to correlate with conversion, while 
+        * A large number of tickets likely indicates that the customer is struggling with the product and would be expected to have an inverse relationship with conversion. 
+
+        We should explore this further if the support team sees trends in support ticket volumes that would merit further inspection of this relationship.
+
+        ## Exploring the Strongest Signal
+        Digging a bit deeper into the dataset-connection and conversion correlation:
+        * Most accounts connected between 0 and 2 datasets, and this pattern holds within every signup channel. 
+        * Accounts with 2 or more datasets connected see a noticeable increase in conversion rate. 
+        * Partner and referral channels with 0 datasets connected convert on par with or outperform paid_search conversions with 1-2 datasets connected, worth keeping an eye on in case it's a trend. 
+        * Dataset connections corresponds to roughly a 63% increase in the odds of conversion for every one standard-deviation increase in datasets connected.
+
+        ## Recommended Next Step
+        Test for a causal relationship between dataset connection quantity and conversion. Are we just seeing that already-engaged users tend to connect more datasets, or could connecting more datasets also offer users more opportunity to engage and convert? 
+
+        Specifically, test whether a prompt to add a second data source connection early in the trial period would improve conversion causally.
+  - cellType: MARKDOWN
+    cellId: 01a0d81f-e73e-70eb-a036-71f55d6c2805 # DO NOT CHANGE - Hex uses this to match up cells when reimporting the file, and detect any changes to existing cells
+    cellLabel: Human + AI Workflow
+    config:
+      source: Built with Hex's AI for data generation, chart scaffolding, and statistical/troubleshooting support; I drove the SQL logic, bucketing decisions, and final analysis.
+appLayout:
+  visibleMetadataFields:
+    - NAME
+    - DESCRIPTION
+    - AUTHOR
+    - LAST_EDITED
+    - LAST_RUN
+    - CATEGORIES
+    - STATUS
+    - TABLE_OF_CONTENTS
+  fullWidth: false
+  tabs:
+    - name: Tab 1
+      rows:
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d6e2-c349-71a6-a8a7-8fd11abebeb7
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0da16-086d-779b-ab9a-fe6272008629
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d6e7-32c4-7423-8814-e0fd6859876d
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0da26-4567-72aa-89b9-bb89d2adf8aa
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d7f2-4bb4-7094-8956-dc86e03a4dea
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0da18-6b5f-7384-9d02-37e665bac0f3
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d7c3-fb53-77ef-9f6e-2b57085a3541
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d753-bd03-772e-afd2-051720718bac
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d761-a40c-778a-bbaf-b660540b80b7
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d9ed-9f5f-720a-b08d-8bb03f3782e1
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d7ca-f5b8-7686-8866-022905c9bc07
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d805-5477-73af-815f-a3735c959474
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0da21-2aee-7457-8570-e92c4f9caff5
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d81d-76c3-7144-b8f6-694f3cf1096a
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d81e-dcc4-7097-b60e-689b39b6c0ca
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d81f-c129-772f-b931-dd5d67ba9399
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+        - columns:
+            - start: 0
+              end: 120
+              elements:
+                - showSource: false
+                  hideOutput: false
+                  type: CELL
+                  cellId: 01a0d81f-e73e-70eb-a036-71f55d6c2805
+                  sharedFilterId: null
+                  height: null
+                  showLabel: true
+                  explorable: null
+sharedFilters: []
