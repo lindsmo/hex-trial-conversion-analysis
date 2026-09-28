@@ -1,0 +1,1 @@
+trials_df[numeric_cols].corrwith(trials_df["converted"])

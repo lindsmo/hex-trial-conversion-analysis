@@ -1,0 +1,3 @@
+#Define buckets for top signal using explicit bins since data is skewed toward 0; tested defining 3 bins initially, but found 4 bins showed the distribution better since there are also quite a few accounts with 0 datasets connected.
+tiered_explicit_df = trials_df.copy()
+tiered_explicit_df['engagement_tier'] = pd.cut(tiered_explicit_df['datasets_connected'], bins = [-1, 0, 1, 2, np.inf], labels =["0", "1", "2", "3+"])
