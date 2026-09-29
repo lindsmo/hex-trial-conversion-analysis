@@ -11,7 +11,7 @@ z_df[numeric_cols] = (trials_df[numeric_cols] - trials_df[numeric_cols].mean()) 
 model = smf.logit(
     "converted ~ seats_invited + datasets_connected + queries_run_wk1 + support_tickets + days_active + C(signup_channel, Treatment('organic_search'))", 
     data=z_df
-).fit()
+).fit(disp=0)
 
 # Extract coefficients and 95% confidence intervals into a DataFrame
 summary_df = pd.DataFrame({
@@ -23,15 +23,29 @@ summary_df = pd.DataFrame({
 # Filter to numeric columns only (excluding Intercept and categorical channels)
 signals_df = summary_df.loc[numeric_cols].copy()
 
-# Add the odds ratio, percentage change in odds, and confidence interval ratio
+# Add the odds ratio, confidence interval ratio, and percentage change in odds
 signals_df["odds_ratio"] = np.exp(model.params)
-signals_df["odds_ratio_pct_change"] = (signals_df["odds_ratio"] - 1) * 100
 signals_df["conf_lower_ratio"] = np.exp(signals_df["conf_lower"])
 signals_df["conf_upper_ratio"] = np.exp(signals_df["conf_upper"])
+signals_df["odds_ratio_pct_change"] = (signals_df["odds_ratio"] - 1) * 100
 
 # Add the absolute value of each coefficient for sorting purposes
 signals_df["abs_coef"] = signals_df["coef"].abs()
 
-# Sort by absolute magnitude descending
-ranked_signals = signals_df.sort_values("abs_coef", ascending=False)
+# Rename columns for clarity
+signals_df = signals_df.rename(
+    columns={
+        "coef": "log_odds_coefficient",
+        "conf_lower": "log_odds_ci_95_lower",
+        "conf_upper": "log_odds_ci_95_upper",
+        "odds_ratio": "odds_ratio",
+        "conf_lower_ratio": "odds_ratio_ci_95_lower",
+        "conf_upper_ratio": "odds_ratio_ci_95_upper",
+        "odds_ratio_pct_change": "odds_pct_change",
+        "abs_coef": "abs_log_odds_coefficient",
+    }
+)
+
+# Sort by absolute magnitude descending, then drop absolute magnitude
+ranked_signals = signals_df.sort_values("abs_log_odds_coefficient", ascending=False).drop(columns=["abs_log_odds_coefficient"])
 ranked_signals
