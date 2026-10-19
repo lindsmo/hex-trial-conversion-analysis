@@ -50,3 +50,6 @@ trial runs. This repo preserves the full analysis:
 - [notebook/trial_conversion_signals.ipynb](...): exported notebook (SQL/input parameters may not render identically to the live app)
 - [hex-project/trial_conversion_signals.yaml](...): full project logic, lossless
 - [media/archive/](...): full-page captures of both app tabs, plus the regression table and bucketing charts in isolation
+
+## License
+Code is licensed under MIT. Images in media/ are screenshots of the Hex app and are not covered by this license.
